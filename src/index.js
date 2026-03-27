@@ -22,6 +22,8 @@ app.use('/api/study-logs',  require('./routes/studyLogs'));
 app.use('/api/f-records',   require('./routes/fRecords'));
 app.use('/api/attendance',  require('./routes/attendance'));
 app.use('/api/admins',      require('./routes/admins'));
+app.use('/api/notifications', require('./routes/notifications'));
+
 
 app.use((err, req, res, _next) => {
   console.error(err);
@@ -64,3 +66,85 @@ function scheduleExpiry() {
 }
 
 scheduleExpiry();
+
+
+// ── 알림 생성 로직 ──────────────────────────────────────────
+async function generateNotifications() {
+  const now = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  const todayStr = now.toISOString().slice(0, 10);
+  const nowTimeStr = now.toISOString().slice(11, 16).replace('T', ''); // HH:mm
+  
+  try {
+    // 1. 예정일 지났는데 미완료인 스케줄 알림
+    const [expired] = await pool.query(
+        `SELECT sc.*, s.name AS student_name
+       FROM schedules sc
+       JOIN students s ON sc.student_id = s.id
+       WHERE sc.status IN ('pending', 'in_progress')
+         AND sc.scheduled_date < ?
+         AND NOT EXISTS (
+           SELECT 1 FROM notifications n
+           WHERE n.schedule_id = sc.id AND n.type = 'expired'
+         )`,
+        [todayStr]
+    );
+    
+    for (const sc of expired) {
+      const typeLabel = sc.type === 'study' ? '자습' : '재시험';
+      await pool.query(
+          `INSERT INTO notifications (type, student_id, schedule_id, message)
+         VALUES ('expired', ?, ?, ?)`,
+          [
+            sc.student_id,
+            sc.id,
+            `${sc.student_name} - ${typeLabel} 기한(${sc.deadline_date?.slice(0, 10)})이 지났습니다.`
+          ]
+      );
+    }
+    
+    // 2. 도착 예정시간 10분 지났는데 등원 기록 없는 경우
+    const [noShow] = await pool.query(
+        `SELECT sc.*, s.name AS student_name
+       FROM schedules sc
+       JOIN students s ON sc.student_id = s.id
+       WHERE sc.scheduled_date = ?
+         AND sc.scheduled_time IS NOT NULL
+         AND sc.status IN ('pending', 'in_progress')
+         AND ADDTIME(sc.scheduled_time, '00:10:00') < ?
+         AND NOT EXISTS (
+           SELECT 1 FROM attendance_logs al
+           WHERE al.student_id = sc.student_id
+             AND al.log_date = ?
+         )
+         AND NOT EXISTS (
+           SELECT 1 FROM notifications n
+           WHERE n.schedule_id = sc.id AND n.type = 'no_show'
+             AND DATE(n.created_at) = ?
+         )`,
+        [todayStr, nowTimeStr, todayStr, todayStr]
+    );
+    
+    for (const sc of noShow) {
+      const typeLabel = sc.type === 'study' ? '자습' : '재시험';
+      await pool.query(
+          `INSERT INTO notifications (type, student_id, schedule_id, message)
+         VALUES ('no_show', ?, ?, ?)`,
+          [
+            sc.student_id,
+            sc.id,
+            `${sc.student_name} - ${typeLabel} 예정시간(${sc.scheduled_time?.slice(0, 5)})이 지났는데 등원하지 않았습니다.`
+          ]
+      );
+    }
+    
+    if (expired.length + noShow.length > 0) {
+      console.log(`🔔 알림 생성: 만료 ${expired.length}건, 미등원 ${noShow.length}건`);
+    }
+  } catch (e) {
+    console.error('알림 생성 오류:', e);
+  }
+}
+
+// 5분마다 알림 체크
+setInterval(generateNotifications, 5 * 60 * 1000);
+generateNotifications(); // 서버 시작 시 즉시 실행
