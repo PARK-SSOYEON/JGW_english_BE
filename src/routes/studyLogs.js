@@ -24,8 +24,8 @@ router.get('/', authMiddleware, async (req, res) => {
     WHERE 1=1
   `;
   const params = [];
-  if (date)       { sql += ' AND DATE(CONVERT_TZ(sl.start_time, \'+00:00\', \'+09:00\')) = ?'; params.push(date); }
-  if (student_id) { sql += ' AND sl.student_id = ?'; params.push(student_id); }
+    if (date) { sql += ' AND DATE(sl.start_time) = ?'; params.push(date); }
+    if (student_id) { sql += ' AND sl.student_id = ?'; params.push(student_id); }
   sql += ' ORDER BY sl.start_time DESC';
   const [rows] = await pool.query(sql, params);
   res.json(rows);
