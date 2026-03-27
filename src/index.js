@@ -97,7 +97,7 @@ async function generateNotifications() {
           [
             sc.student_id,
             sc.id,
-            `${sc.student_name} - ${typeLabel} 기한(${sc.deadline_date?.slice(0, 10)})이 지났습니다.`
+            `${sc.student_name} - ${typeLabel} 날짜(${sc.deadline_date?.slice(0, 10)})가 지났습니다.`
           ]
       );
     }
