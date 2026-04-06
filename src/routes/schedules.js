@@ -152,4 +152,63 @@ router.delete('/:id', authMiddleware, superOnly, async (req, res) => {
   res.json({ message: '일정 삭제 완료' });
 });
 
+// GET /api/schedules/weekly?class_id=1&week_offset=0
+// week_offset: 0=이번주, -1=지난주, 1=다음주
+router.get('/weekly', authMiddleware, async (req, res) => {
+  const { class_id, week_offset = 0 } = req.query;
+  if (!class_id) return res.status(400).json({ error: 'class_id 필요' });
+  
+  // 반 정보 조회
+  const [classRows] = await pool.query(
+      'SELECT * FROM classes WHERE id = ?', [class_id]
+  );
+  if (!classRows.length) return res.status(404).json({ error: '반 없음' });
+  const cls = classRows[0];
+  const dow = cls.day_of_week; // 수업 요일 (0=일~6=토)
+  
+  // 오늘 기준으로 이번 주차 시작일 계산
+  // 주차 시작 = 지난 수업일 다음날
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  let daysSinceLast = (today.getDay() - dow + 7) % 7;
+  if (daysSinceLast === 0) daysSinceLast = 7;
+  const lastClass = new Date(today);
+  lastClass.setDate(today.getDate() - daysSinceLast);
+  
+  // week_offset 적용
+  const offset = parseInt(week_offset);
+  const weekStart = new Date(lastClass);
+  weekStart.setDate(lastClass.getDate() + (offset * 7) + 1); // 지난 수업 다음날
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekStart.getDate() + 6); // 6일 후 (다음 수업 전날)
+  
+  const weekStartStr = weekStart.toISOString().slice(0, 10);
+  const weekEndStr   = weekEnd.toISOString().slice(0, 10);
+  
+  // 해당 반 학생들의 스케줄 조회
+  const [rows] = await pool.query(
+      `SELECT sc.*,
+            s.name AS student_name, s.school, s.grade,
+            GROUP_CONCAT(DISTINCT c.name SEPARATOR ', ') AS class_names
+     FROM schedules sc
+     JOIN students s ON sc.student_id = s.id
+     JOIN student_classes stc ON s.id = stc.student_id AND stc.class_id = ?
+     LEFT JOIN student_classes stc2 ON s.id = stc2.student_id
+     LEFT JOIN classes c ON stc2.class_id = c.id
+     WHERE sc.deadline_date BETWEEN ? AND ?
+     GROUP BY sc.id
+     ORDER BY sc.type, s.name`,
+      [class_id, weekStartStr, weekEndStr]
+  );
+  
+  res.json({
+    class: cls,
+    week_start: weekStartStr,
+    week_end:   weekEndStr,
+    week_offset: offset,
+    schedules: rows,
+  });
+});
+
 module.exports = router;

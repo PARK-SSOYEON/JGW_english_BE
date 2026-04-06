@@ -23,6 +23,7 @@ app.use('/api/f-records',   require('./routes/fRecords'));
 app.use('/api/attendance',  require('./routes/attendance'));
 app.use('/api/admins',      require('./routes/admins'));
 app.use('/api/notifications', require('./routes/notifications'));
+app.use('/api/seasons', require('./routes/seasons'));
 
 
 app.use((err, req, res, _next) => {
@@ -35,34 +36,93 @@ app.listen(PORT, () => {
 });
 
 function scheduleExpiry() {
-  const now = new Date(Date.now() + 9 * 60 * 60 * 1000)
-  const todayStr = now.toISOString().slice(0, 10)
-  
-  const next7am = new Date(now)
-  next7am.setHours(7, 0, 0, 0)
-  if (now >= next7am) next7am.setDate(next7am.getDate() + 1)
-  
-  const msUntil7am = next7am - now
-  
-  setTimeout(async () => {
-    try {
-      const [result] = await pool.query(
-          `UPDATE schedules
-         SET status = 'expired',
-             is_completed = 0
-         WHERE status IN ('pending', 'in_progress')
-           AND deadline_date < ?`,
-          [todayStr]
-      )
-      console.log(`✅ 만료 처리 완료 (${todayStr}) - ${result.affectedRows}건`)
-    } catch (e) {
-      console.error('만료 처리 오류:', e)
-    }
-    scheduleExpiry()
-  }, msUntil7am)
-
-  const next7amKST = new Date(next7am.getTime() + 9 * 60 * 60 * 1000)
-  console.log(`⏰ 다음 만료 처리: ${next7amKST.toISOString().replace('T', ' ').slice(0, 16)} KST`)
+    const now = new Date(Date.now() + 9 * 60 * 60 * 1000)
+    const todayStr = now.toISOString().slice(0, 10)
+    
+    const next7am = new Date(now)
+    next7am.setHours(7, 0, 0, 0)
+    if (now >= next7am) next7am.setDate(next7am.getDate() + 1)
+    const msUntil7am = next7am - now
+    
+    setTimeout(async () => {
+        try {
+            // 1. 만료 처리
+            const [result] = await pool.query(
+                `UPDATE schedules
+                 SET status = 'expired'
+                 WHERE status IN ('pending', 'in_progress')
+                   AND deadline_date < ?`,
+                [todayStr]
+            )
+            
+            // 2. 방금 만료된 스케줄의 학생들 경고 처리
+            const [expiredStudents] = await pool.query(
+                `SELECT DISTINCT s.id, s.name, s.is_warned, s.warn_count
+         FROM schedules sc
+         JOIN students s ON sc.student_id = s.id
+         WHERE sc.status = 'expired'
+           AND sc.deadline_date = DATE_SUB(?, INTERVAL 1 DAY)`,
+                [todayStr]
+            )
+            
+            for (const student of expiredStudents) {
+                // warn_count 증가 + is_warned 갱신
+                await pool.query(
+                    `UPDATE students
+           SET warn_count = warn_count + 1,
+               is_warned = TRUE
+           WHERE id = ?`,
+                    [student.id]
+                )
+                
+                const newWarnCount = student.warn_count + 1
+                
+                if (newWarnCount >= 2) {
+                    // 2회 이상 → 퇴원 대상 알림
+                    await pool.query(
+                        `INSERT INTO notifications (type, student_id, message)
+             SELECT 'expired', ?, ?
+             WHERE NOT EXISTS (
+               SELECT 1 FROM notifications
+               WHERE student_id = ? AND message LIKE '%퇴원%'
+                 AND DATE(created_at) = ?
+             )`,
+                        [
+                            student.id,
+                            `${student.name} - 경고 ${newWarnCount}회. 퇴원 조치 대상입니다.`,
+                            student.id,
+                            todayStr
+                        ]
+                    )
+                } else {
+                    // 1회 → 경고 알림
+                    await pool.query(
+                        `INSERT INTO notifications (type, student_id, message)
+             SELECT 'expired', ?, ?
+             WHERE NOT EXISTS (
+               SELECT 1 FROM notifications
+               WHERE student_id = ? AND message LIKE '%경고%'
+                 AND DATE(created_at) = ?
+             )`,
+                        [
+                            student.id,
+                            `${student.name} - 자습/재시험 미이행으로 경고 ${newWarnCount}회 처리되었습니다.`,
+                            student.id,
+                            todayStr
+                        ]
+                    )
+                }
+            }
+            
+            console.log(`✅ 만료 처리 완료 (${todayStr}) - ${result.affectedRows}건, 경고 ${expiredStudents.length}명`)
+        } catch (e) {
+            console.error('만료 처리 오류:', e)
+        }
+        scheduleExpiry()
+    }, msUntil7am)
+    
+    const next7amKST = new Date(next7am.getTime() + 9 * 60 * 60 * 1000)
+    console.log(`⏰ 다음 만료 처리: ${next7amKST.toISOString().replace('T', ' ').slice(0, 16)} KST`)
 }
 
 scheduleExpiry();
