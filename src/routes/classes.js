@@ -10,7 +10,7 @@ router.get('/', async (req, res) => {
   if (school)    { sql += ' AND c.school = ?';    params.push(school); }
   if (grade)     { sql += ' AND c.grade = ?';     params.push(grade); }
   if (season_id) { sql += ' AND season_id = ?'; params.push(season_id); }
-  sql += ' ORDER BY c.school, grade, day_of_week';
+  sql += ' ORDER BY c.school, c.grade, day_of_week';
   const [rows] = await pool.query(sql, params);
   res.json(rows);
 });
