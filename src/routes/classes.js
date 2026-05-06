@@ -3,14 +3,15 @@ const { pool } = require('../db');
 const { authMiddleware, superOnly } = require('../middleware/auth');
 
 // GET /api/classes?school=유신고&grade=1&season_id=1
+// TODO - school & grade class -> class_schools
 router.get('/', async (req, res) => {
   const { school, grade, season_id } = req.query;
-  let sql = 'SELECT * FROM classes c, class_schools cs WHERE 1=1';
+  let sql = 'SELECT * FROM classes WHERE 1=1';
   const params = [];
-  if (school)    { sql += ' AND c.school = ?';    params.push(school); }
-  if (grade)     { sql += ' AND c.grade = ?';     params.push(grade); }
+  if (school)    { sql += ' AND school = ?';    params.push(school); }
+  if (grade)     { sql += ' AND grade = ?';     params.push(grade); }
   if (season_id) { sql += ' AND season_id = ?'; params.push(season_id); }
-  sql += ' ORDER BY c.school, c.grade, day_of_week';
+  sql += ' ORDER BY school, grade, day_of_week';
   const [rows] = await pool.query(sql, params);
   res.json(rows);
 });
