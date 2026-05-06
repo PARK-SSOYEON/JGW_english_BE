@@ -74,6 +74,7 @@ router.post('/', authMiddleware, async (req, res) => {
   
   const required_minutes = type === 'study' ? calcMinutes(f_homework, f_retest) : null;
   
+  //TODO - FIX
   let finalDeadline = deadline_date || null;
   if (!finalDeadline) {
     const [classRows] = await pool.query(

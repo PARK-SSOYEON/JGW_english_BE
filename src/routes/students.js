@@ -24,18 +24,22 @@ router.get('/', authMiddleware, async (req, res) => {
 });
 
 // GET /api/students/search
+// TODO - day_of_week TEST
 router.get('/search', async (req, res) => {
   const { name } = req.query;
   if (!name) return res.status(400).json({ error: '이름을 입력해주세요.' });
   
   const [students] = await pool.query(
-      `SELECT s.*, GROUP_CONCAT(c.name SEPARATOR ', ') AS class_names,
-            GROUP_CONCAT(c.day_of_week SEPARATOR ',') AS class_days
-     FROM students s
-     LEFT JOIN student_classes sc ON s.id = sc.student_id
-     LEFT JOIN classes c ON sc.class_id = c.id
-     WHERE s.name LIKE ? AND s.is_active = TRUE
-     GROUP BY s.id`,
+      `SELECT s.*,
+         GROUP_CONCAT(DISTINCT c.name SEPARATOR ', ') AS class_names,
+         GROUP_CONCAT(DISTINCT cd.day_of_week SEPARATOR ',') AS class_days
+       FROM students s
+              LEFT JOIN student_classes sc ON s.id = sc.student_id
+              LEFT JOIN classes c ON sc.class_id = c.id
+              LEFT JOIN class_days cd ON c.id = cd.class_id
+       WHERE s.name LIKE ?
+       AND s.is_active = TRUE
+       GROUP BY s.id`,
       [`%${name}%`]
   );
   

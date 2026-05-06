@@ -5,7 +5,7 @@ const { authMiddleware, superOnly } = require('../middleware/auth');
 // GET /api/classes?school=유신고&grade=1&season_id=1
 router.get('/', async (req, res) => {
   const { school, grade, season_id } = req.query;
-  let sql = 'SELECT * FROM classes WHERE 1=1';
+  let sql = 'SELECT * FROM classes, class_schools WHERE 1=1';
   const params = [];
   if (school)    { sql += ' AND school = ?';    params.push(school); }
   if (grade)     { sql += ' AND grade = ?';     params.push(grade); }
@@ -41,15 +41,50 @@ router.get('/:id/students', authMiddleware, async (req, res) => {
 });
 
 // POST /api/classes (슈퍼)
+// TODO - TEST
 router.post('/', authMiddleware, superOnly, async (req, res) => {
-  const { name, school, grade, day_of_week, season_id } = req.body;
-  if (!name || !school || !grade || day_of_week === undefined)
-    return res.status(400).json({ error: '필수 항목 누락' });
-  const [result] = await pool.query(
-      'INSERT INTO classes (season_id, name, school, grade, day_of_week) VALUES (?, ?, ?, ?, ?)',
-      [season_id || null, name, school, grade, day_of_week]
-  );
-  res.status(201).json({ id: result.insertId });
+    const { name, season_id, schools, days } = req.body;
+    
+    if (!name || !schools?.length || !days?.length) {
+        return res.status(400).json({ error: '필수 항목 누락' });
+    }
+    
+    const conn = await pool.getConnection();
+    try {
+        await conn.beginTransaction();
+        
+        // 1. classes 생성
+        const [result] = await conn.query(
+            'INSERT INTO classes (season_id, name) VALUES (?, ?)',
+            [season_id || null, name]
+        );
+        const classId = result.insertId;
+        
+        // 2. 학교 + 학년
+        for (const s of schools) {
+            await conn.query(
+                'INSERT INTO class_schools (class_id, school, grade) VALUES (?, ?, ?)',
+                [classId, s.name, s.grade]
+            );
+        }
+        
+        // 3. 요일
+        for (const d of days) {
+            await conn.query(
+                'INSERT INTO class_days (class_id, day_of_week) VALUES (?, ?)',
+                [classId, d]
+            );
+        }
+        
+        await conn.commit();
+        res.status(201).json({ id: classId });
+        
+    } catch (err) {
+        await conn.rollback();
+        throw err;
+    } finally {
+        conn.release();
+    }
 });
 
 // DELETE /api/classes/:id (슈퍼)
