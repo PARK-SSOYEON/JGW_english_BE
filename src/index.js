@@ -66,11 +66,10 @@ function scheduleExpiry() {
             )
             
             for (const student of expiredStudents) {
-                // warn_count 증가 + is_warned 갱신
+                // warn_count 증가
                 await pool.query(
                     `UPDATE students
-           SET warn_count = warn_count + 1,
-               is_warned = TRUE
+           SET warn_count = warn_count + 1
            WHERE id = ?`,
                     [student.id]
                 )
