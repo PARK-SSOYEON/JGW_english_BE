@@ -57,11 +57,11 @@ function scheduleExpiry() {
             
             // 2. 방금 만료된 스케줄의 학생들 경고 처리
             const [expiredStudents] = await pool.query(
-                `SELECT DISTINCT s.id, s.name, s.is_warned, s.warn_count
-         FROM schedules sc
-         JOIN students s ON sc.student_id = s.id
-         WHERE sc.status = 'expired'
-           AND sc.deadline_date = DATE_SUB(?, INTERVAL 1 DAY)`,
+                `SELECT DISTINCT s.id, s.name, s.warn_count
+                 FROM schedules sc
+                          JOIN students s ON sc.student_id = s.id
+                 WHERE sc.status = 'expired'
+                   AND sc.deadline_date = DATE_SUB(?, INTERVAL 1 DAY)`,
                 [todayStr]
             )
             
