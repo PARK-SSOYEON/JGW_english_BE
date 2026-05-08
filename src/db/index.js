@@ -14,11 +14,21 @@ const pool = mysql.createPool({
   charset: 'utf8mb4',
   timezone: '+09:00',
   dateStrings: true,
+  enableKeepAlive: true,
+  keepAliveInitialDelay: 0,
 });
 
 pool.on('connection', (conn) => {
   conn.query("SET time_zone = '+09:00'");
 });
+
+setInterval(async () => {
+  try {
+    await pool.query('SELECT 1');
+  } catch (e) {
+    console.error('DB ping 오류:', e.message);
+  }
+}, 5 * 60 * 1000);
 
 async function initDB() {
   const conn = await mysql.createConnection({
