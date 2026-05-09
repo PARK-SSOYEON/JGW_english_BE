@@ -102,8 +102,7 @@ router.post('/', authMiddleware, async (req, res) => {
 
 // PATCH /api/schedules/:id
 router.patch('/:id', authMiddleware, async (req, res) => {
-  // ← scheduled_time 추가
-  const { scheduled_date, scheduled_time, f_homework, f_retest, deadline_date, is_completed, status, note } = req.body;
+  const { scheduled_date, scheduled_time, f_homework, f_retest, deadline_date, status, note } = req.body;
   const fields = [];
   const params = [];
   
@@ -128,17 +127,10 @@ router.patch('/:id', authMiddleware, async (req, res) => {
   if (status !== undefined) {
     fields.push('status = ?'); params.push(status);
     if (status === 'completed') {
-      fields.push('is_completed = 1');
       fields.push('completed_at = NOW()');
     } else {
-      fields.push('is_completed = 0');
       fields.push('completed_at = NULL');
     }
-  } else if (is_completed !== undefined) {
-    fields.push('is_completed = ?'); params.push(is_completed ? 1 : 0);
-    fields.push('status = ?');       params.push(is_completed ? 'completed' : 'pending');
-    if (is_completed) fields.push('completed_at = NOW()');
-    else              fields.push('completed_at = NULL');
   }
   
   if (!fields.length) return res.status(400).json({ error: '수정할 항목 없음' });
