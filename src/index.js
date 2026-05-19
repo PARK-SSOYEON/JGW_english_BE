@@ -60,7 +60,8 @@ function scheduleExpiry() {
                  FROM schedules sc
                           JOIN students s ON sc.student_id = s.id
                  WHERE sc.status = 'expired'
-                   AND sc.deadline_date = DATE_SUB(?, INTERVAL 1 DAY)`,
+                   AND sc.deadline_date = DATE_SUB(?, INTERVAL 1 DAY)
+                   AND sc.type='study'`,
                 [todayStr]
             )
             
