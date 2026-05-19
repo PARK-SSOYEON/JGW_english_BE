@@ -19,7 +19,6 @@ app.use('/api/students',    require('./routes/students'));
 app.use('/api/classes',     require('./routes/classes'));
 app.use('/api/schedules',   require('./routes/schedules'));
 app.use('/api/study-logs',  require('./routes/studyLogs'));
-app.use('/api/f-records',   require('./routes/fRecords'));
 app.use('/api/attendance',  require('./routes/attendance'));
 app.use('/api/admins',      require('./routes/admins'));
 app.use('/api/notifications', require('./routes/notifications'));
