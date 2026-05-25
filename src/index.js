@@ -105,7 +105,7 @@ function scheduleExpiry() {
              )`,
                         [
                             student.id,
-                            `${student.name} - 자습/재시험 미이행으로 경고 ${newWarnCount}회 처리되었습니다.`,
+                            `${student.name} - 자습 미이행으로 경고 ${newWarnCount}회 처리되었습니다.`,
                             student.id,
                             todayStr
                         ]
