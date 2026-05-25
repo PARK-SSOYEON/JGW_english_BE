@@ -84,10 +84,19 @@ router.post('/:id/end', authMiddleware, async (req, res) => {
     const startStr = log.start_time.replace(' ', 'T');
     const endStr   = nowKST.replace(' ', 'T');
     const actualMinutes = Math.max(Math.floor((new Date(endStr) - new Date(startStr)) / 60000), 0);
+    const [[remainRow]] = await pool.query(
+        `SELECT GREATEST(sc.required_minutes - sc.done_minutes - ?, 0) AS remain_minutes
+     FROM schedules sc
+     JOIN study_logs sl ON sc.id = sl.schedule_id
+     WHERE sl.id = ?`,
+        [actualMinutes, req.params.id]
+    );
+    
+    const remainMinutes = remainRow?.remain_minutes ?? 0;
     
     await pool.query(
-        `UPDATE study_logs SET end_time = ?, actual_minutes = ? WHERE id = ?`,
-        [nowKST, actualMinutes, req.params.id]
+        `UPDATE study_logs SET end_time = ?, actual_minutes = ?, remain_minutes = ? WHERE id = ?`,
+        [nowKST, actualMinutes, remainMinutes, req.params.id]
     );
     
     const todayStr = kstDateStr();
