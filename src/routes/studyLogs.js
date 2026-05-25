@@ -16,7 +16,7 @@ function kstDateTimeStr() {
 router.get('/', authMiddleware, async (req, res) => {
     const { date, student_id } = req.query;
     let sql = `
-    SELECT sl.*, s.name AS student_name, s.school, s.grade,
+    SELECT sl.*, s.name AS student_name, s.school AS student_school, s.grade AS student_grade,
            sc.required_minutes, sc.done_minutes, sc.deadline_date
     FROM study_logs sl
     JOIN students s ON sl.student_id = s.id
