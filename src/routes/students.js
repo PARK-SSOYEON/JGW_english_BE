@@ -6,40 +6,38 @@ const { authMiddleware, superOnly } = require('../middleware/auth');
 router.get('/', authMiddleware, async (req, res) => {
   const { school, grade, class_id, warned, season_id } = req.query;
   let sql = `
-    SELECT s.*, GROUP_CONCAT(c.name SEPARATOR ', ') AS class_names
+    SELECT s.*, GROUP_CONCAT(DISTINCT c.name SEPARATOR ', ') AS class_names
     FROM students s
-    LEFT JOIN student_classes sc ON s.id = sc.student_id
+           LEFT JOIN student_classes sc ON s.id = sc.student_id ${season_id ? 'AND sc.season_id = ?' : ''}
     LEFT JOIN classes c ON sc.class_id = c.id
     WHERE s.is_active = TRUE
   `;
   const params = [];
-  if (school)    { sql += ' AND s.school = ?';      params.push(school); }
-  if (grade)     { sql += ' AND s.grade = ?';       params.push(grade); }
-  if (class_id)  { sql += ' AND sc.class_id = ?';   params.push(class_id); }
+  if (season_id) params.push(season_id);
+  if (school)   { sql += ' AND s.school = ?';    params.push(school); }
+  if (grade)    { sql += ' AND s.grade = ?';     params.push(grade); }
+  if (class_id) { sql += ' AND sc.class_id = ?'; params.push(class_id); }
   if (warned === 'true') { sql += ' AND s.warn_count > 0'; }
-  if (season_id) { sql += ' AND sc.season_id = ?';  params.push(season_id); }
-  sql += ' GROUP BY s.id ORDER BY s.school, s.grade, s.name';
+  sql += ' GROUP BY s.id ORDER BY s.school_type, s.grade, s.name';
   const [rows] = await pool.query(sql, params);
   res.json(rows);
 });
 
 // GET /api/students/search
-// TODO - day_of_week TEST
 router.get('/search', async (req, res) => {
   const { name } = req.query;
   if (!name) return res.status(400).json({ error: '이름을 입력해주세요.' });
   
   const [students] = await pool.query(
       `SELECT s.*,
-         GROUP_CONCAT(DISTINCT c.name SEPARATOR ', ') AS class_names,
-         GROUP_CONCAT(DISTINCT cd.day_of_week SEPARATOR ',') AS class_days
-       FROM students s
-              LEFT JOIN student_classes sc ON s.id = sc.student_id
-              LEFT JOIN classes c ON sc.class_id = c.id
-              LEFT JOIN class_days cd ON c.id = cd.class_id
-       WHERE s.name LIKE ?
-       AND s.is_active = TRUE
-       GROUP BY s.id`,
+       GROUP_CONCAT(DISTINCT c.name SEPARATOR ', ') AS class_names,
+       GROUP_CONCAT(DISTINCT c.day_of_week SEPARATOR ',') AS class_days
+     FROM students s
+     LEFT JOIN student_classes sc ON s.id = sc.student_id
+     LEFT JOIN classes c ON sc.class_id = c.id
+     WHERE s.name LIKE ?
+     AND s.is_active = TRUE
+     GROUP BY s.id`,
       [`%${name}%`]
   );
   
