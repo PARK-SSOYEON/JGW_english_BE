@@ -90,15 +90,15 @@ router.get('/search', async (req, res) => {
 
 // POST /api/students
 router.post('/', authMiddleware, async (req, res) => {
-  const { name, school, grade, class_ids, season_id } = req.body;
+  const { name, school, school_type, grade, class_ids, season_id } = req.body;
   if (!name || !school || !grade) return res.status(400).json({ error: '필수 항목 누락' });
   
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
     const [result] = await conn.query(
-        'INSERT INTO students (name, school, grade) VALUES (?, ?, ?)',
-        [name, school, grade]
+        'INSERT INTO students (name, school, school_type, grade) VALUES (?, ?, ?, ?)',
+        [name, school, school_type || 'high', grade]
     );
     const studentId = result.insertId;
     if (class_ids?.length) {
@@ -121,13 +121,14 @@ router.post('/', authMiddleware, async (req, res) => {
 
 // PATCH /api/students/:id
 router.patch('/:id', authMiddleware, async (req, res) => {
-  const { name, school, grade, warn_count, class_ids, season_id } = req.body;
+  const { name, school, school_type, grade, warn_count, class_ids, season_id } = req.body;
   const fields = [];
   const params = [];
-  if (name !== undefined)       { fields.push('name = ?');       params.push(name); }
-  if (school !== undefined)     { fields.push('school = ?');     params.push(school); }
-  if (grade !== undefined)      { fields.push('grade = ?');      params.push(grade); }
-  if (warn_count !== undefined) { fields.push('warn_count = ?'); params.push(warn_count); }
+  if (name !== undefined)        { fields.push('name = ?');        params.push(name); }
+  if (school !== undefined)      { fields.push('school = ?');      params.push(school); }
+  if (school_type !== undefined) { fields.push('school_type = ?'); params.push(school_type); }
+  if (grade !== undefined)       { fields.push('grade = ?');       params.push(grade); }
+  if (warn_count !== undefined)  { fields.push('warn_count = ?');  params.push(warn_count); }
   
   const conn = await pool.getConnection();
   try {
