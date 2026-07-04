@@ -25,26 +25,44 @@ function calcDeadline(dayOfWeek, scheduledDate) {
 
 // GET /api/schedules
 router.get('/', authMiddleware, async (req, res) => {
-  const { date, student_id, type, status } = req.query;
-  let sql = `
-    SELECT sc.*,
-           s.name AS student_name, s.school, s.grade,
-           GROUP_CONCAT(DISTINCT c.name SEPARATOR ', ') AS class_names
-    FROM schedules sc
-           JOIN students s ON sc.student_id = s.id
-           LEFT JOIN student_classes stc ON s.id = stc.student_id
-           LEFT JOIN classes c ON stc.class_id = c.id
+  const { type, season_id } = req.query;
+  
+  let seasonFilter = ''
+  const params = []
+  
+  if (season_id) {
+    const [seasons] = await pool.query('SELECT start_date, end_date FROM seasons WHERE id = ?', [season_id])
+    if (seasons.length) {
+      const { start_date, end_date } = seasons[0]
+      seasonFilter = ' AND DATE(sch.created_at) BETWEEN ? AND ?'
+      params.push(start_date, end_date)
+    }
+  }
+  
+  const sql = `
+    SELECT sch.*,
+           s.name  AS student_name,
+           s.grade AS grade,
+           s.school AS student_school,
+           GROUP_CONCAT(DISTINCT c.name SEPARATOR ', ') AS class_names,
+           COALESCE(SUM(sl.actual_minutes), 0) AS done_minutes
+    FROM schedules sch
+    JOIN students s ON sch.student_id = s.id
+    LEFT JOIN student_classes sc ON s.id = sc.student_id
+    LEFT JOIN classes c ON sc.class_id = c.id
+    LEFT JOIN study_logs sl ON sl.student_id = s.id AND sl.end_time IS NOT NULL
     WHERE 1=1
-  `;
-  const params = [];
-  if (date)       { sql += ' AND sc.scheduled_date = ?'; params.push(date); }
-  if (student_id) { sql += ' AND sc.student_id = ?';     params.push(student_id); }
-  if (type)       { sql += ' AND sc.type = ?';           params.push(type); }
-  if (status)     { sql += ' AND sc.status = ?';         params.push(status); }
-  sql += ' GROUP BY sc.id ORDER BY sc.deadline_date, s.school, s.grade, s.name';
-  const [rows] = await pool.query(sql, params);
-  res.json(rows);
-});
+    ${type ? ' AND sch.type = ?' : ''}
+    ${seasonFilter}
+    GROUP BY sch.id
+    ORDER BY sch.created_at DESC
+  `
+  
+  if (type) params.unshift(type)  // type이 있으면 앞에 삽입
+  
+  const [rows] = await pool.query(sql, params)
+  res.json(rows)
+})
 
 // GET /api/schedules/week
 router.get('/week', authMiddleware, async (req, res) => {

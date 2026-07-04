@@ -14,22 +14,36 @@ function kstDateTimeStr() {
 
 // GET /api/study-logs
 router.get('/', authMiddleware, async (req, res) => {
-    const { date, student_id } = req.query;
-    let sql = `
-    SELECT sl.*, s.name AS student_name, s.school AS student_school, s.grade AS student_grade,
-           sc.required_minutes, sc.done_minutes, sc.deadline_date
+    const { date, season_id } = req.query
+    
+    let whereClause = 'WHERE 1=1'
+    const params = []
+    
+    if (date) {
+        whereClause += ' AND DATE(sl.start_time) = ?'
+        params.push(date)
+    } else if (season_id) {
+        const [seasons] = await pool.query('SELECT start_date, end_date FROM seasons WHERE id = ?', [season_id])
+        if (seasons.length) {
+            const { start_date, end_date } = seasons[0]
+            whereClause += ' AND DATE(sl.start_time) BETWEEN ? AND ?'
+            params.push(start_date, end_date)
+        }
+    }
+    
+    const [rows] = await pool.query(`
+    SELECT sl.*,
+           s.name   AS student_name,
+           s.school AS student_school,
+           s.grade  AS student_grade
     FROM study_logs sl
     JOIN students s ON sl.student_id = s.id
-    LEFT JOIN schedules sc ON sl.schedule_id = sc.id
-    WHERE 1=1
-  `;
-    const params = [];
-    if (date)       { sql += ' AND DATE(sl.start_time) = ?'; params.push(date); }
-    if (student_id) { sql += ' AND sl.student_id = ?';       params.push(student_id); }
-    sql += ' ORDER BY sl.start_time DESC';
-    const [rows] = await pool.query(sql, params);
-    res.json(rows);
-});
+    ${whereClause}
+    ORDER BY sl.start_time DESC
+  `, params)
+    
+    res.json(rows)
+})
 
 // POST /api/study-logs/start
 router.post('/start', authMiddleware, async (req, res) => {
