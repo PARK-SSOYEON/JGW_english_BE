@@ -21,23 +21,28 @@ router.get('/:id/students', authMiddleware, async (req, res) => {
   const [classRows] = await pool.query('SELECT * FROM classes WHERE id = ?', [req.params.id]);
   if (!classRows.length) return res.status(404).json({ error: '반을 찾을 수 없습니다.' });
   
-  const [rows] = await pool.query(
-      `SELECT s.*,
-            GROUP_CONCAT(DISTINCT c2.name SEPARATOR ', ') AS class_names,
-            SUM(CASE WHEN sc2.type='study' AND sc2.status IN ('pending','in_progress') THEN 1 ELSE 0 END) AS pending_study_count,
-            SUM(CASE WHEN sc2.type='retest' AND sc2.status IN ('pending','in_progress') THEN 1 ELSE 0 END) AS pending_retest_count,
-            SUM(CASE WHEN sc2.type='study' AND sc2.status IN ('pending','in_progress')
-                THEN (sc2.required_minutes - sc2.done_minutes) ELSE 0 END) AS remaining_minutes
-     FROM students s
-     JOIN student_classes stc ON s.id = stc.student_id AND stc.class_id = ?
-     LEFT JOIN student_classes stc2 ON s.id = stc2.student_id
-     LEFT JOIN classes c2 ON stc2.class_id = c2.id
-     LEFT JOIN schedules sc2 ON sc2.student_id = s.id AND sc2.status IN ('pending','in_progress')
-     WHERE s.is_active = TRUE
-     GROUP BY s.id
-     ORDER BY s.name`,
-      [req.params.id]
-  );
+ const [rows] = await pool.query(
+  `SELECT s.*,
+          GROUP_CONCAT(DISTINCT c2.name SEPARATOR ', ') AS class_names,
+          COUNT(DISTINCT CASE WHEN sc2.type='study'  AND sc2.status IN ('pending','in_progress') THEN sc2.id END) AS pending_study_count,
+          COUNT(DISTINCT CASE WHEN sc2.type='retest' AND sc2.status IN ('pending','in_progress') THEN sc2.id END) AS pending_retest_count,
+          (
+            SELECT COALESCE(SUM(required_minutes - done_minutes), 0)
+            FROM schedules
+            WHERE student_id = s.id
+              AND type = 'study'
+              AND status IN ('pending', 'in_progress')
+          ) AS remaining_minutes
+   FROM students s
+   JOIN student_classes stc ON s.id = stc.student_id AND stc.class_id = ?
+   LEFT JOIN student_classes stc2 ON s.id = stc2.student_id
+   LEFT JOIN classes c2 ON stc2.class_id = c2.id
+   LEFT JOIN schedules sc2 ON sc2.student_id = s.id AND sc2.status IN ('pending','in_progress')
+   WHERE s.is_active = TRUE
+   GROUP BY s.id
+   ORDER BY s.name`,
+  [req.params.id]
+);
   res.json(rows);
 });
 
