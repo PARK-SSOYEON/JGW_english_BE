@@ -40,23 +40,27 @@ router.get('/', authMiddleware, async (req, res) => {
   }
   
   const sql = `
-    SELECT sch.*,
-           s.name  AS student_name,
-           s.grade AS grade,
-           s.school AS student_school,
-           GROUP_CONCAT(DISTINCT c.name SEPARATOR ', ') AS class_names,
-           COALESCE(SUM(sl.actual_minutes), 0) AS done_minutes
-    FROM schedules sch
-    JOIN students s ON sch.student_id = s.id
-    LEFT JOIN student_classes sc ON s.id = sc.student_id
-    LEFT JOIN classes c ON sc.class_id = c.id
-    LEFT JOIN study_logs sl ON sl.student_id = s.id AND sl.end_time IS NOT NULL
-    WHERE 1=1
-    ${type ? ' AND sch.type = ?' : ''}
-    ${seasonFilter}
-    GROUP BY sch.id
-    ORDER BY sch.created_at DESC
-  `
+  SELECT sch.*,
+         s.name  AS student_name,
+         s.grade AS grade,
+         s.school AS student_school,
+         GROUP_CONCAT(DISTINCT c.name SEPARATOR ', ') AS class_names,
+         COALESCE((
+           SELECT SUM(sl.actual_minutes)
+           FROM study_logs sl
+           WHERE sl.schedule_id = sch.id
+             AND sl.end_time IS NOT NULL
+         ), 0) AS done_minutes
+  FROM schedules sch
+  JOIN students s ON sch.student_id = s.id
+  LEFT JOIN student_classes sc ON s.id = sc.student_id
+  LEFT JOIN classes c ON sc.class_id = c.id
+  WHERE 1=1
+  ${type ? ' AND sch.type = ?' : ''}
+  ${seasonFilter}
+  GROUP BY sch.id
+  ORDER BY sch.created_at DESC
+`
   
   if (type) params.unshift(type)  // type이 있으면 앞에 삽입
   
