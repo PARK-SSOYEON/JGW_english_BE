@@ -38,7 +38,6 @@ router.get('/:id/students', authMiddleware, async (req, res) => {
    LEFT JOIN student_classes stc2 ON s.id = stc2.student_id
    LEFT JOIN classes c2 ON stc2.class_id = c2.id
    LEFT JOIN schedules sc2 ON sc2.student_id = s.id AND sc2.status IN ('pending','in_progress')
-   WHERE s.is_active = TRUE
    GROUP BY s.id
    ORDER BY s.name`,
   [req.params.id]
