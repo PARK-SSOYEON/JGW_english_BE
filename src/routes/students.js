@@ -40,7 +40,6 @@ router.get('/search', async (req, res) => {
        GROUP BY s.id`,
       season_id ? [season_id, `%${name}%`] : [`%${name}%`]
   );
-  // ... 이하 동일
   
   if (!students.length) return res.json([]);
   
@@ -128,23 +127,39 @@ router.patch('/:id', authMiddleware, async (req, res) => {
   if (school_type !== undefined) { fields.push('school_type = ?'); params.push(school_type); }
   if (grade !== undefined)       { fields.push('grade = ?');       params.push(grade); }
   if (warn_count !== undefined)  { fields.push('warn_count = ?');  params.push(warn_count); }
-  
+
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
+
     if (fields.length) {
       params.push(req.params.id);
       await conn.query(`UPDATE students SET ${fields.join(', ')} WHERE id = ?`, params);
     }
+
     if (class_ids !== undefined) {
-      await conn.query('DELETE FROM student_classes WHERE student_id = ?', [req.params.id]);
+      if (season_id) {
+        // ✅ 해당 시즌 데이터만 삭제 후 재삽입 (다른 시즌 데이터 보존)
+        await conn.query(
+          'DELETE FROM student_classes WHERE student_id = ? AND season_id = ?',
+          [req.params.id, season_id]
+        );
+      } else {
+        // season_id 없으면 기존처럼 전체 삭제
+        await conn.query(
+          'DELETE FROM student_classes WHERE student_id = ?',
+          [req.params.id]
+        );
+      }
+
       for (const cid of class_ids) {
         await conn.query(
-            'INSERT INTO student_classes (student_id, class_id, season_id) VALUES (?, ?, ?)',
-            [req.params.id, cid, season_id || null]
+          'INSERT INTO student_classes (student_id, class_id, season_id) VALUES (?, ?, ?)',
+          [req.params.id, cid, season_id || null]
         );
       }
     }
+
     await conn.commit();
     res.json({ message: '수정 완료' });
   } catch (e) {
