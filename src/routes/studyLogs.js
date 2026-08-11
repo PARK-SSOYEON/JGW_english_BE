@@ -35,9 +35,12 @@ router.get('/', authMiddleware, async (req, res) => {
     SELECT sl.*,
            s.name   AS student_name,
            s.school AS student_school,
-           s.grade  AS student_grade
+           s.grade  AS student_grade,
+           sc.required_minutes,
+           sc.done_minutes
     FROM study_logs sl
     JOIN students s ON sl.student_id = s.id
+    LEFT JOIN schedules sc ON sl.schedule_id = sc.id
     ${whereClause}
     ORDER BY sl.start_time DESC
   `, params)
