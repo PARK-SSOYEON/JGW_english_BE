@@ -26,10 +26,10 @@ function calcDeadline(dayOfWeek, scheduledDate) {
 // GET /api/schedules
 router.get('/', authMiddleware, async (req, res) => {
   const { type, season_id } = req.query;
-  
+
   let seasonFilter = ''
   const params = []
-  
+
   if (season_id) {
     const [seasons] = await pool.query('SELECT start_date, end_date FROM seasons WHERE id = ?', [season_id])
     if (seasons.length) {
@@ -38,33 +38,36 @@ router.get('/', authMiddleware, async (req, res) => {
       params.push(start_date, end_date)
     }
   }
-  
+
   const sql = `
-  SELECT sch.*,
-         s.name  AS student_name,
-         s.grade AS grade,
-         s.school AS student_school,
-         GROUP_CONCAT(DISTINCT c.name SEPARATOR ', ') AS class_names,
-         COALESCE((
-           SELECT SUM(sl.actual_minutes)
-           FROM study_logs sl
-           WHERE sl.schedule_id = sch.id
-             AND sl.end_time IS NOT NULL
-         ), 0) AS done_minutes
-  FROM schedules sch
-  JOIN students s ON sch.student_id = s.id
-  LEFT JOIN student_classes sc ON s.id = sc.student_id
-  LEFT JOIN classes c ON sc.class_id = c.id
-  WHERE 1=1
-  ${type ? ' AND sch.type = ?' : ''}
-  ${seasonFilter}
-  GROUP BY sch.id
-  ORDER BY sch.created_at DESC
-`
-  
-  if (type) params.unshift(type)  // type이 있으면 앞에 삽입
-  
-  const [rows] = await pool.query(sql, params)
+    SELECT sch.*,
+           s.name  AS student_name,
+           s.grade AS grade,
+           s.school AS student_school,
+           GROUP_CONCAT(DISTINCT c.name SEPARATOR ', ') AS class_names,
+           COALESCE((
+             SELECT SUM(sl.actual_minutes)
+             FROM study_logs sl
+             WHERE sl.schedule_id = sch.id
+               AND sl.end_time IS NOT NULL
+           ), 0) AS done_minutes
+    FROM schedules sch
+    JOIN students s ON sch.student_id = s.id
+    LEFT JOIN student_classes sc ON s.id = sc.student_id ${season_id ? 'AND sc.season_id = ?' : ''}
+    LEFT JOIN classes c ON sc.class_id = c.id
+    WHERE 1=1
+    ${type ? ' AND sch.type = ?' : ''}
+    ${seasonFilter}
+    GROUP BY sch.id
+    ORDER BY sch.created_at DESC
+  `
+
+  // 파라미터 순서: season_id(JOIN용) → type → seasonFilter(날짜범위)
+  const joinParams = []
+  if (season_id) joinParams.push(season_id)
+  if (type) joinParams.push(type)
+
+  const [rows] = await pool.query(sql, [...joinParams, ...params])
   res.json(rows)
 })
 
