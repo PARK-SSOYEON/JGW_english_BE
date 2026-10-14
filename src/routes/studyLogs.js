@@ -32,15 +32,18 @@ router.get('/', authMiddleware, async (req, res) => {
     }
     
     const [rows] = await pool.query(`
-    SELECT sl.*,
-           s.name   AS student_name,
-           s.school AS student_school,
-           s.grade  AS student_grade
-    FROM study_logs sl
-    JOIN students s ON sl.student_id = s.id
-    ${whereClause}
-    ORDER BY sl.start_time DESC
-  `, params)
+        SELECT sl.*,
+               s.name   AS student_name,
+               s.school AS student_school,
+               s.grade  AS student_grade,
+               sc.required_minutes,
+               sc.done_minutes
+        FROM study_logs sl
+                 JOIN students s ON sl.student_id = s.id
+                 LEFT JOIN schedules sc ON sl.schedule_id = sc.id
+            ${whereClause}
+        ORDER BY sl.start_time DESC
+    `, params)
     
     res.json(rows)
 })
@@ -54,7 +57,7 @@ router.post('/start', authMiddleware, async (req, res) => {
     
     const [active] = await pool.query(
         `SELECT id FROM study_logs
-     WHERE student_id = ? AND DATE(start_time) = ? AND end_time IS NULL`,
+         WHERE student_id = ? AND DATE(start_time) = ? AND end_time IS NULL`,
         [student_id, todayStr]
     );
     if (active.length) return res.status(409).json({ error: '이미 자습이 진행 중입니다.' });
@@ -62,7 +65,7 @@ router.post('/start', authMiddleware, async (req, res) => {
     const nowKST = kstDateTimeStr();
     const [result] = await pool.query(
         `INSERT INTO study_logs (student_id, schedule_id, log_date, start_time)
-     VALUES (?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?)`,
         [student_id, schedule_id || null, todayStr, nowKST]
     );
     
@@ -85,9 +88,9 @@ router.post('/start', authMiddleware, async (req, res) => {
 router.post('/:id/end', authMiddleware, async (req, res) => {
     const [logs] = await pool.query(
         `SELECT sl.*, sc.required_minutes, sc.done_minutes, sc.status AS schedule_status
-     FROM study_logs sl
-     LEFT JOIN schedules sc ON sl.schedule_id = sc.id
-     WHERE sl.id = ?`,
+         FROM study_logs sl
+                  LEFT JOIN schedules sc ON sl.schedule_id = sc.id
+         WHERE sl.id = ?`,
         [req.params.id]
     );
     if (!logs.length) return res.status(404).json({ error: '로그를 찾을 수 없습니다.' });
@@ -100,9 +103,9 @@ router.post('/:id/end', authMiddleware, async (req, res) => {
     const actualMinutes = Math.max(Math.floor((new Date(endStr) - new Date(startStr)) / 60000), 0);
     const [[remainRow]] = await pool.query(
         `SELECT GREATEST(sc.required_minutes - sc.done_minutes - ?, 0) AS remain_minutes
-     FROM schedules sc
-     JOIN study_logs sl ON sc.id = sl.schedule_id
-     WHERE sl.id = ?`,
+         FROM schedules sc
+                  JOIN study_logs sl ON sc.id = sl.schedule_id
+         WHERE sl.id = ?`,
         [actualMinutes, req.params.id]
     );
     
@@ -116,7 +119,7 @@ router.post('/:id/end', authMiddleware, async (req, res) => {
     const todayStr = kstDateStr();
     await pool.query(
         `INSERT INTO attendance_logs (student_id, log_date, purpose, note)
-     VALUES (?, ?, 'study', '하원')`,
+         VALUES (?, ?, 'study', '하원')`,
         [log.student_id, todayStr]
     );
     
@@ -127,10 +130,10 @@ router.post('/:id/end', authMiddleware, async (req, res) => {
         
         await pool.query(
             `UPDATE schedules
-       SET done_minutes = ?,
-           status = ?,
-           completed_at = IF(?, ?, NULL)
-       WHERE id = ?`,
+             SET done_minutes = ?,
+                 status = ?,
+                 completed_at = IF(?, ?, NULL)
+             WHERE id = ?`,
             [
                 newDone,
                 scheduleCompleted ? 'completed' : 'in_progress',
@@ -155,7 +158,7 @@ router.post('/checkout', authMiddleware, async (req, res) => {
     const todayStr = kstDateStr();
     await pool.query(
         `INSERT INTO attendance_logs (student_id, log_date, purpose, note)
-     VALUES (?, ?, 'general', '하원')`,
+         VALUES (?, ?, 'general', '하원')`,
         [student_id, todayStr]
     );
     res.json({ message: '하원 기록 완료' });
@@ -177,7 +180,7 @@ router.delete('/:id', authMiddleware, superOnly, async (req, res) => {
         );
         await pool.query(
             `UPDATE schedules SET status = 'in_progress', completed_at = NULL
-       WHERE id = ? AND status = 'completed'`,
+             WHERE id = ? AND status = 'completed'`,
             [schedule_id]
         );
     }
